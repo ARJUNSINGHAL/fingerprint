@@ -1,0 +1,86 @@
+#include <Adafruit_Fingerprint.h>
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266HTTPClient.h>
+
+#define WIFI_SSID "Your WiFi SSID"
+#define WIFI_PASSWORD "Your WiFi password"
+
+#define SERVER_URL "http://yourserver.com/attendance"
+
+Adafruit_Fingerprint finger = Adafruit_Fingerprint(&Serial);
+
+void connectToWiFi() {
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+}
+
+void setup() {
+  Serial.begin(9600);
+  finger.begin(57600);
+
+  connectToWiFi();
+}
+
+void loop() {
+  getFingerprintID();
+
+  delay(500);
+}
+
+void getFingerprintID() {
+  uint8_t p = finger.getImage();
+  if (p != FINGERPRINT_OK) {
+    Serial.println("No fingerprint found");
+    return;
+  }
+
+  p = finger.image2Tz();
+  if (p != FINGERPRINT_OK) {
+    Serial.println("Error converting fingerprint");
+    return;
+  }
+
+  p = finger.fingerFastSearch();
+  if (p == FINGERPRINT_OK) {
+    uint8_t id = finger.fingerID;
+    uint8_t confidence = finger.confidence;
+
+    Serial.print("Fingerprint ID: ");
+    Serial.print(id);
+    Serial.print(", Confidence: ");
+    Serial.println(confidence);
+
+    sendAttendanceData(id);
+  } else {
+    Serial.println("No match found");
+    return;
+  }
+}
+
+void sendAttendanceData(uint8_t id) {
+  WiFiClient client;
+  HTTPClient http;
+
+  String url = SERVER_URL;
+  url += "?id=";
+  url += String(id);
+
+  Serial.println("Sending attendance data to server...");
+  if (http.begin(client, url)) {
+    int httpResponseCode = http.GET();
+    if (httpResponseCode == 200) {
+      Serial.println("Attendance data sent successfully");
+    } else {
+      Serial.print("HTTP Error: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
+  } else {
+    Serial.println("Unable to connect to server");
+  }
+}
